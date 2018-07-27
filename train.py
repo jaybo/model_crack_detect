@@ -14,7 +14,6 @@ import h5py  # for saving the model
 import io
 import keras
 import keras.backend as K
-import matplotlib.image as mpimg
 import numpy as np
 from time import time
 from datetime import datetime  # for filename conventions
@@ -24,7 +23,6 @@ from keras.layers import Convolution2D, MaxPooling2D
 from keras.layers import Activation, Dropout, Flatten, Dense, Input, Reshape
 from keras.models import Model, Sequential
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-from tensorflow.python.lib.io import file_io  # for better file I/O
 from generator import batch_generator
 import models
 import sys
@@ -178,8 +176,8 @@ def make_predition_movie(image_dir, label_dir):
 
         img = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)
         cv2.putText(img, bg.images[index], (22, 22), font, 0.3,
-                    (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(img, bg.images[index], (20, 20), font, 0.3, (0, 0, 0), 1,
+                    (0, 0, 0), 1, cv2.LINE_AA)
+        cv2.putText(img, bg.images[index], (20, 20), font, 0.3, (255, 255, 255), 1,
                     cv2.LINE_AA)
 
         vid_out.write(img)
@@ -192,7 +190,6 @@ def make_predition_movie(image_dir, label_dir):
 
 
 if __name__ == '__main__':
-    # Parse the input arguments for common Cloud ML Engine options
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--image-dir',
