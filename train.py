@@ -15,7 +15,7 @@ from time import time
 # os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import cv2
-import h5py  
+import h5py
 import keras
 import keras.backend as K
 import numpy as np
@@ -28,7 +28,7 @@ from generator import batch_generator
 #Parameters
 INPUT_CHANNELS = 1
 NUMBER_OF_CLASSES = 1
-NAME = "CrackDetect_{}".format(int(time()))
+NAME = "CrackDetect_{}".format(datetime.now().isoformat(timespec='seconds'))
 
 #HyperParameters
 BATCH_SIZE = 4
@@ -61,7 +61,7 @@ def train_model_batch_generator(image_dir=None,
     checkpoint_name = 'model_weights_' + NAME + '.h5'
 
     tensorboard = keras.callbacks.TensorBoard(
-        log_dir="logs/{}".format(NAME), 
+        log_dir="logs/{}".format(NAME),
         #histogram_freq=1,
         write_images=True)
 
