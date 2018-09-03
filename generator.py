@@ -13,18 +13,31 @@ class batch_generator(object):
              batch_size=None,
              validation_batch_size=None,
              training_split=0.8,
+             output_size=None,
              scale_size=None,
+             include_only_crops_with_mask=False,
              augment=True):
-        ''' scale_size is a tuple (W, H) '''
+        '''
+        output_size is a tuple (H, W) and is the final output size. 
+        scale_size is a tuple (H, W) and only used when cropping.
+        original_image -> scale_size -> crop to output_size.
+        include_only_crops_with_mask means skip crops which don't have at least one mask bit set
+        '''
 
         self.training_split = training_split
+        self.output_size = output_size
         self.scale_size = scale_size
+        self.include_only_crops_with_mask = include_only_crops_with_mask
         self.augment=augment
 
         # get lists of img and mask
         self.image_dir = image_dir
         self.label_dir = label_dir
         self.images = sorted(glob.glob(image_dir))
+        # filter them
+        exclude_prefix = ['BrightField', 'DarkField', '_montage']
+        self.images = [x for x in self.images if not any(stop in x for stop in exclude_prefix) ]
+
         self.image_count = len(self.images)
         if self.label_dir:
             self.masks = sorted(glob.glob(label_dir))
@@ -57,25 +70,32 @@ class batch_generator(object):
 
         # figure out the size of each image
         img = cv2.imread(self.images[0], cv2.IMREAD_COLOR)
-        if self.scale_size:
-            self.height = self.scale_size[0]
-            self.width = self.scale_size[1]
+        if self.output_size:
+            self.height = self.output_size[0]
+            self.width = self.output_size[1]
         else:
             self.height = img.shape[0]
             self.width = img.shape[1]
+
+        if self.scale_size and self.output_size and self.output_size < self.scale_size:
+            self.cropping = True
+        else:
+            self.cropping = False
+
+        sometimes = lambda aug: iaa.Sometimes(0.5, aug) # 50% of the time
 
         self.seq = iaa.Sequential([
             #iaa.Crop(px=(0, 16)), # crop images from each side by 0 to 16px (randomly chosen)
             iaa.Fliplr(0.5), # horizontally flip 50% of the images
             iaa.Flipud(0.5),
-            iaa.Affine(
-                 scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
+            sometimes(iaa.Affine(
+                 #scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
                  translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
                  rotate=(-35, 35)
-                 ),
+                 )),
             #iaa.GaussianBlur((0, 1.0))
             #iaa.AddToHueAndSaturation((-10, 10), name="AddToHueAndSaturation"),
-            #iaa.Multiply((0.9, 1.1), name="Multiply")
+            #iaa.Multiply((0.95, 1.05), name="Multiply")
             # iaa.GaussianBlur(sigma=(0, 3.0)) # blur images with a sigma of 0 to 3.0
         ])
 
@@ -106,16 +126,52 @@ class batch_generator(object):
         mask = None
         if self.label_dir:
             mask = cv2.imread(mask_src[index], cv2.IMREAD_GRAYSCALE)
-        if self.scale_size:
-            img = cv2.resize(img, self.scale_size)
-            if self.label_dir:
-                mask = cv2.resize(mask, self.scale_size)
-                mask *= 255
 
-        if augment:
+        if True:
             #img = self.clahe.apply(img)
-            img = cv2.equalizeHist(img)
+            #img = cv2.equalizeHist(img)
+
+            # make really, really, really dark images lighter
+            # percentage = 97 # ignore (1-percentage) top bright values
+            # percentage_target = 180 # target mean gray level
+            # a = np.percentile(img, percentage)
+            # if a < percentage_target:
+            #     img = cv2.multiply(img, percentage_target / a)
+            #     # print (a, np.percentile(img, percentage))
             pass
+            
+        if self.output_size:
+            # somehow changing the output size
+            if self.cropping:
+                # first scale, then crop
+                timg = tmsk = None
+                # resize
+                img = cv2.resize(img, (self.scale_size[1], self.scale_size[0]))
+                if mask is not None:
+                    mask = cv2.resize(mask, (self.scale_size[1], self.scale_size[0]))
+                for j in range(10):
+                    # crop
+                    y = random.randint(0, self.scale_size[0] - self.output_size[0])
+                    x = random.randint(0, self.scale_size[1] - self.output_size[1])
+                    timg = img[y:y+self.output_size[0], x:x+self.output_size[1]]
+                    if mask is not None:
+                        tmsk = mask[y:y+self.output_size[0], x:x+self.output_size[1]]
+                        if self.include_only_crops_with_mask:
+                            if tmsk.any() > 0:
+                                break
+                if timg is not None:
+                    img = timg.copy()
+                if tmsk is not None:
+                    mask = tmsk.copy()
+
+            else:
+                # return original image size
+                img = cv2.resize(img, (self.output_size[1], self.output_size[0]))
+                if mask is not None:
+                    mask = cv2.resize(mask, (self.output_size[1], self.output_size[0]))
+
+        if mask is not None:
+            mask *= 255
 
         if augment:
             seq_det = self.seq.to_deterministic()
@@ -123,20 +179,6 @@ class batch_generator(object):
             if self.label_dir:
                 mask = seq_det.augment_image(mask, hooks=self.hooks_activator_mask)
 
-        # if self.augment:
-        #     #img = self.clahe.apply(img)
-        #     img = cv2.equalizeHist(img)
-
-        # if self.rotate:
-        #     rot = np.random.randint(0, 359)
-        #     rotation_matrix = cv2.getRotationMatrix2D((self.width/2, self.height/2), rot, 1)
-        #     img = cv2.warpAffine(img, rotation_matrix, (self.width, self.height))
-        #     mask = cv2.warpAffine(mask, rotation_matrix, (self.width, self.height))
-
-            # rot = np.random.choice([-1, 0, 1, 2])
-            # if rot != 0:
-            #     img = np.rot90(img, rot)
-            #     mask = np.rot90(mask,rot)
         return img, mask
 
 
@@ -159,8 +201,12 @@ class batch_generator(object):
             mask_list = seq_det.augment_images(mask_list, hooks=self.hooks_activator_mask)
 
             image_list = np.array(image_list, dtype=np.float32) #Note: don't scale input, because use batchnorm after input
+            
+            # image_list /= 255.
+            
             image_list = image_list.reshape(self.batch_size, self.height, self.width, 1)
             mask_list = np.array(mask_list, dtype=np.float32)
+            
             mask_list /= 255.0 # [0,1]
 
             mask_list= mask_list.reshape(self.batch_size,self.height*self.width, 1) #NUMBER_OF_CLASSES
@@ -182,11 +228,15 @@ class batch_generator(object):
                 image_list.append(img)
                 mask_list.append(mask)
 
+            # don't augment the validation batch
             seq_det = self.seq.to_deterministic()
             image_list = seq_det.augment_images(image_list)
             mask_list = seq_det.augment_images(mask_list, hooks=self.hooks_activator_mask)
 
             image_list = np.array(image_list, dtype=np.float32) #Note: don't scale input, because use batchnorm after input
+
+            # image_list /= 255.
+
             image_list = image_list.reshape(self.validation_batch_size, self.height, self.width, 1)
             mask_list = np.array(mask_list, dtype=np.float32)
             mask_list /= 255.0 # [0,1]
@@ -228,13 +278,45 @@ class batch_generator(object):
         cv2.destroyAllWindows()
 
 
+def calc_target_bright_value(image_dir, percentage=97):
+    ''' Find the bright percentage value for each image '''
+    import matplotlib.pyplot as plt
+
+    bg = batch_generator(
+        image_dir,
+        None,
+        batch_size=1,
+        validation_batch_size=1,
+        output_size=(1920, 1920), # (H, W)
+        scale_size=None, # (H, W)
+        include_only_crops_with_mask = False,
+        augment=False)
+
+    p = []
+    for index in range(bg.image_count):
+        img, mask8 = bg.get_image_and_mask(index, source='all', augment=False)
+        a = np.percentile(img, percentage)
+        if a > 250:
+            continue # ignore huge white patches
+        p.append (a)
+
+    print (np.min(p), np.max(p), np.mean(p))
+    plt.hist(p, bins=50)
+    plt.show()
+
 if __name__ == '__main__':
+
+    calc_target_bright_value(r"..\data\crack_detect\original\crack_images\*.tif")
+
     bg = batch_generator(
         image_dir=r"..\data\crack_detect\original\crack_images\*.tif",
         label_dir=r"..\data\crack_detect\original\crack_annotations\*.png",
         batch_size=1,
         validation_batch_size=1,
-        scale_size=(1000, 1000))
+        output_size=(480, 480), # (H, W)
+        scale_size=(1920, 1920), # (H, W)
+        include_only_crops_with_mask = True
+        ) 
     #img, mask = bg.training_batch(batch_size=8)
     bg.show_all()
     #im, mask = bg.get_random_validation()
