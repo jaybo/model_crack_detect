@@ -19,7 +19,7 @@ import h5py
 import keras
 import keras.backend as K
 import numpy as np
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 
 import models
 from generator import batch_generator
@@ -35,7 +35,7 @@ BATCH_SIZE = 4
 VALIDATION_BATCH_SIZE = 4
 OUTPUT_SIZE = (256, 256)  # (H, W)
 SCALE_SIZE = (1920, 1920) # (H, W)
-EPOCHS = 300
+EPOCHS = 500
 PATIENCE = 80
 
 
@@ -60,6 +60,14 @@ def train_model_batch_generator(image_dir=None,
 
     checkpoint_name = 'model_weights_' + NAME + '.h5'
 
+    # class LearningRateTracker(keras.callbacks.Callback):
+    #     def on_epoch_end(self, epoch, logs={}):
+    #         optimizer = self.model.optimizer
+    #         lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * optimizer.iterations)))
+    #         print('\nLR: {:.6f}\n'.format(lr))
+
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, min_lr=0.001)
+
     tensorboard = keras.callbacks.TensorBoard(
         log_dir="logs/{}".format(NAME),
         #histogram_freq=1,
@@ -67,6 +75,8 @@ def train_model_batch_generator(image_dir=None,
 
     callbacks = [
         tensorboard,
+        reduce_lr,
+        # LearningRateTracker(),
         EarlyStopping(monitor='val_loss', patience=PATIENCE, verbose=0),
         ModelCheckpoint(
             checkpoint_name,
@@ -186,7 +196,7 @@ def make_predition_movie(image_dir, label_dir, weights=None):
 
             # fill with the ground truth
             if mask8 is not None:
-                alpha = 0.5
+                alpha = 0.25
                 merge = np.zeros_like(img)
                 merge[:,:,0] = mask8
                 img = cv2.addWeighted(merge, alpha, img, 1 - alpha, 0, img)

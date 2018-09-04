@@ -9,7 +9,7 @@ from keras.layers import BatchNormalization, Conv2D, Conv2DTranspose, Cropping2D
 from keras.layers import Convolution2D, MaxPooling2D, Conv2DTranspose
 from keras.layers import Activation, Dropout, Flatten, Dense, Input, Reshape
 from keras.models import Model, Sequential
-from keras.optimizers import Adadelta
+from keras.optimizers import Adadelta, SGD
 from keras.applications.vgg16 import VGG16
 from keras.applications.xception import Xception
 
@@ -32,7 +32,11 @@ def get_model(batch_size=8, width=None, height=None):
     act = Activation('sigmoid')(reshape)
 
     model = Model(inputs=inputs, outputs=act)
-    model.compile(optimizer=Adadelta(), loss='binary_crossentropy')
+
+    optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+    # optimizer = Adadelta()
+
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
 
     print(model.summary())
 
@@ -45,13 +49,13 @@ def get_model(batch_size=8, width=None, height=None):
 
 #     # create the base model
 
-    
+
 #     base_model = VGG16(input_tensor=input_tensor, weights=None, include_top=False, pooling=None)
 #     # base_model = Xception(input_tensor=input_tensor, weights=None, include_top=False, pooling=None)
 
 
 #     x = base_model.output
-    
+
 #     # Convolutional layers transfered from fully-connected layers
 #     x = Conv2D(512, (7, 7), activation='relu', padding='same', name='fc1')(x)
 #     x = Dropout(0.33)(x)
@@ -84,7 +88,7 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
 
 
     # x = BatchNormalization()(inputs)
-    
+
     # # Block 1
     # x = Conv2D(16, (9, 9), activation='relu', padding='same', name='block1_conv1')(x)
     # x = Conv2D(16, (9, 9), activation='relu', padding='same', name='block1_conv2')(x)
@@ -105,25 +109,25 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
     # ----------------------------------------------------------------------------------------------
 
     x = BatchNormalization()(inputs)
-        
+
     # Block 1
-    x = Conv2D(32, (9, 9), activation='relu', padding='same', name='block1_conv1')(x)
-    x = Conv2D(32, (9, 9), activation='relu', padding='same', name='block1_conv2')(x)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same', name='block1_conv1')(x)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
 
 
     # Block 2
-    x = Conv2D(64, (7, 7), activation='relu', padding='same', name='block2_conv1')(x)
-    x = Conv2D(64, (7, 7), activation='relu', padding='same', name='block2_conv2')(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
 
     # Block 3
     x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
     x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
-    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
-    # x = BatchNormalization()(x)
+    # x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
+    x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
 
     # x = Dropout(0.35)(x)
@@ -131,16 +135,16 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
     # Block 4
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
-    #x = BatchNormalization()(x)
+    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
+    x = BatchNormalization()(x)
     # x = Dropout(0.35)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
 
     # Block 5
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
-    # x = BatchNormalization()(x)
+    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
+    x = BatchNormalization()(x)
     # x = Dropout(0.35)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
 
@@ -148,18 +152,18 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
     x = Conv2D(n_classes, (3, 3), activation='relu', padding="same")(x)
 
     x = Conv2DTranspose(n_classes, kernel_size=(64, 64), strides=(32, 32), activation='linear', padding='same')(x)
-    
+
     return x
- 
 
 
 
 
-    
+
+
     # ------------------------------------------------------------------------------------
 
     # x = BatchNormalization()(inputs)
-        
+
     # # Block 1
     # x = Conv2D(32, (9, 9), activation='relu', padding='same', name='block1_conv1')(inputs)
     # x = Conv2D(32, (9, 9), activation='relu', padding='same', name='block1_conv2')(x)
@@ -187,17 +191,17 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
     # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
     # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
     # x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
-    
+
     # x = Conv2D(256, (3, 3), activation='relu', padding="same")(x)
-    
+
     # x = Conv2DTranspose(n_classes, kernel_size=(64, 64), strides=(32, 32), activation='linear', padding='same')(x)
-    
+
     # return x
 
 def get_fcn_vgg16_8s_modified(inputs, n_classes):
-    
+
     x = BatchNormalization()(inputs)
-    
+
     # Block 1
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
@@ -213,41 +217,41 @@ def get_fcn_vgg16_8s_modified(inputs, n_classes):
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
-    
+
     block_3 = Conv2D(n_classes, (1, 1), activation='relu', padding='same')(x)
-    
+
     # Block 4
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
-    
+
     block_4 = Conv2D(n_classes, (1, 1), activation='relu', padding='same')(x)
-    
+
     # Block 5
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
-    
+
     x = Conv2D(512, (3, 3), activation='relu', padding="same")(x)
 
     block_5 = Conv2DTranspose(n_classes, kernel_size=(4, 4), strides=(2, 2), activation='relu', padding='same')(x)
-    
+
     sum_1 = add([block_4, block_5])
     sum_1 = Conv2DTranspose(n_classes, kernel_size=(4, 4), strides=(2, 2), activation='relu', padding='same')(sum_1)
-    
+
     sum_2 = add([block_3, sum_1])
-    
+
     x = Conv2DTranspose(n_classes, kernel_size=(16, 16), strides=(8, 8), activation='linear', padding='same')(sum_2)
-    
+
     return x
 
 
 def get_unet(inputs, n_classes):
 
     x = BatchNormalization()(inputs)
-    
+
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
@@ -284,14 +288,14 @@ def get_unet(inputs, n_classes):
     conv9 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv9)
 
     conv10 = Conv2D(n_classes, (1, 1), activation='linear')(conv9)
-    
+
     return conv10
 
 
 def get_segnet_vgg16(inputs, n_classes):
-    
+
     x = BatchNormalization()(inputs)
-    
+
     # Block 1
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
@@ -319,37 +323,37 @@ def get_segnet_vgg16(inputs, n_classes):
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = MaxPooling2D((2, 2), strides=(2, 2))(x)
-    
+
     # Up Block 1
     x = UpSampling2D(size=(2, 2))(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
-    
+
     # Up Block 2
     x = UpSampling2D(size=(2, 2))(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
-    
+
     # Up Block 3
     x = UpSampling2D(size=(2, 2))(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-    
+
     # Up Block 4
     x = UpSampling2D(size=(2, 2))(x)
     x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    
+
     # Up Block 5
     x = UpSampling2D(size=(2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    
+
     x = Conv2D(n_classes, (1, 1), activation='linear', padding='same')(x)
-    
+
     return x
 
 

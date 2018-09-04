@@ -66,7 +66,7 @@ class batch_generator(object):
         self.validation_steps = int(len(self.validation_images) / validation_batch_size)
         self.epoch_index = 0
         self.validation_index = 0
-        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        #self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 
         # figure out the size of each image
         img = cv2.imread(self.images[0], cv2.IMREAD_COLOR)
@@ -95,7 +95,7 @@ class batch_generator(object):
                  )),
             #iaa.GaussianBlur((0, 1.0))
             #iaa.AddToHueAndSaturation((-10, 10), name="AddToHueAndSaturation"),
-            #iaa.Multiply((0.95, 1.05), name="Multiply")
+            iaa.Multiply((0.95, 1.05), name="Multiply")
             # iaa.GaussianBlur(sigma=(0, 3.0)) # blur images with a sigma of 0 to 3.0
         ])
 
@@ -128,16 +128,15 @@ class batch_generator(object):
             mask = cv2.imread(mask_src[index], cv2.IMREAD_GRAYSCALE)
 
         if True:
-            #img = self.clahe.apply(img)
-            #img = cv2.equalizeHist(img)
-
             # make really, really, really dark images lighter
-            # percentage = 97 # ignore (1-percentage) top bright values
-            # percentage_target = 180 # target mean gray level
-            # a = np.percentile(img, percentage)
-            # if a < percentage_target:
-            #     img = cv2.multiply(img, percentage_target / a)
-            #     # print (a, np.percentile(img, percentage))
+            percentage = 97 # ignore (1-percentage) top bright values
+            percentage_target = 180 # target mean gray level
+            a = np.percentile(img, percentage)
+            if a < percentage_target:
+                img = cv2.multiply(img, percentage_target / a)
+                # print (a, np.percentile(img, percentage))
+
+            img = cv2.equalizeHist(img)
             pass
             
         if self.output_size:
@@ -306,7 +305,7 @@ def calc_target_bright_value(image_dir, percentage=97):
 
 if __name__ == '__main__':
 
-    calc_target_bright_value(r"..\data\crack_detect\original\crack_images\*.tif")
+    # calc_target_bright_value(r"..\data\crack_detect\original\crack_images\*.tif")
 
     bg = batch_generator(
         image_dir=r"..\data\crack_detect\original\crack_images\*.tif",
