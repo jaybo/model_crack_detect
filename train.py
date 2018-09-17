@@ -28,15 +28,15 @@ from generator import batch_generator
 #Parameters
 INPUT_CHANNELS = 1
 NUMBER_OF_CLASSES = 1
-NAME = "CrackDetect_{}".format(datetime.now().isoformat(timespec='seconds'))
+NAME = "CrackDetect_{}".format(datetime.now().isoformat(timespec='seconds')).replace(':', '-')
 
 #HyperParameters
-BATCH_SIZE = 4
-VALIDATION_BATCH_SIZE = 4
+BATCH_SIZE = 1
+VALIDATION_BATCH_SIZE = 1
 OUTPUT_SIZE = (256, 256)  # (H, W)
 SCALE_SIZE = (1920, 1920) # (H, W)
 EPOCHS = 500
-PATIENCE = 80
+PATIENCE = 15
 
 
 # Create a function to allow for different training data and other options
@@ -58,7 +58,7 @@ def train_model_batch_generator(image_dir=None,
 
     model = models.get_model(BATCH_SIZE, width=OUTPUT_SIZE[1], height=OUTPUT_SIZE[0])
 
-    checkpoint_name = 'model_weights_' + NAME + '.h5'
+    checkpoint_name = NAME + '.h5'
 
     # class LearningRateTracker(keras.callbacks.Callback):
     #     def on_epoch_end(self, epoch, logs={}):
@@ -66,7 +66,7 @@ def train_model_batch_generator(image_dir=None,
     #         lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * optimizer.iterations)))
     #         print('\nLR: {:.6f}\n'.format(lr))
 
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, min_lr=0.001)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.6, patience=5, min_lr=0.001)
 
     tensorboard = keras.callbacks.TensorBoard(
         log_dir="logs/{}".format(NAME),
@@ -126,8 +126,11 @@ def visualy_inspect_result(image_dir, label_dir):
     cv2.waitKey(0)
 
 
-def make_predition_movie(image_dir, label_dir, weights=None):
-    ''' make a movie of both training and validation data with the mask as a red overlay '''
+def make_predition_movie(image_dir, label_dir, weights=None, fraction_cracks=None):
+    ''' make a movie of predictions.
+    if label_dir != None, draw ground truth as blue,
+    if min_crack_fraction != None, only add frames to movie if cracks > fraction.
+    '''
 
     # bg = batch_generator(
     #     image_dir,
@@ -138,6 +141,7 @@ def make_predition_movie(image_dir, label_dir, weights=None):
     #     scale_size=SCALE_SIZE, # (H, W)
     #     include_only_crops_with_mask = True,
     #     augment=True)
+
 
     bg = batch_generator(
         image_dir,
@@ -154,15 +158,15 @@ def make_predition_movie(image_dir, label_dir, weights=None):
     if weights:
         model.load_weights(weights)
     else:
-        model.load_weights('model.h5')
+        model.load_weights(NAME + ".h5")
 
-    vid_name = "crack_detect.mp4"
+    vid_name = NAME + ".mp4"
 
     video_scale = 4
     vid_scaled = (int(bg.width / video_scale), int(bg.height / video_scale))
 
     vid_fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    vid_out = cv2.VideoWriter(vid_name, vid_fourcc, 15.0, vid_scaled)
+    vid_out = cv2.VideoWriter(vid_name, vid_fourcc, 2.0, vid_scaled)
     font = cv2.FONT_HERSHEY_SIMPLEX
 
     for loops in range(1):
@@ -174,37 +178,46 @@ def make_predition_movie(image_dir, label_dir, weights=None):
             y_pred = model.predict(img[None, ...].astype(np.float32))[0]
             y_pred = y_pred.reshape((bg.height, bg.width)) # , NUMBER_OF_CLASSES))
             #print (y_pred.min(), y_pred.max(), y_pred.sum(), y_pred.shape)
+            
+            if fraction_cracks is not None:
+                fraction = np.count_nonzero(y_pred > 0.5)
+                fraction /= (bg.height * bg.width)
+                if fraction < fraction_cracks:
+                    continue
+
+
+
             y_pred8 = y_pred * 255
             y_pred8 = y_pred8.astype(np.uint8)
-            #print (y_pred8.min(), y_pred8.max(), y_pred8.sum(), y_pred8.shape)
+            # print (y_pred8.min(), y_pred8.max(), y_pred8.sum(), y_pred8.shape)
 
+            img = img[:,:,0].astype(np.uint8)
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            mask = np.zeros_like(img)
-            mask[:,:,0] = y_pred8
+            # mask = np.zeros_like(img)
+            # mask[:,:,0] = y_pred8
 
             # alpha = 0.25
             # img = cv2.addWeighted(mask, alpha, img, 1 - alpha, 0, img)
 
-            font_scale = 0.8
-            cv2.putText(img, bg.images[index], (22, 22), font, font_scale,
-                        (0, 0, 0), 1, cv2.LINE_AA)
-            cv2.putText(img, bg.images[index], (20, 20), font, font_scale, (255, 255, 255), 1,
-                        cv2.LINE_AA)
-
-            # outline contour
-            # ret,thresh = cv2.threshold(y_pred8,128,255,0)
-
             # fill with the ground truth
             if mask8 is not None:
-                alpha = 0.25
-                merge = np.zeros_like(img)
-                merge[:,:,0] = mask8
-                img = cv2.addWeighted(merge, alpha, img, 1 - alpha, 0, img)
+                notmask8 = cv2.bitwise_not(mask8)
+                img[:,:,0] = cv2.bitwise_or(img[:,:,0], mask8)
+                img[:,:,1] = cv2.bitwise_and(img[:,:,1], notmask8)
+                img[:,:,2] = cv2.bitwise_and(img[:,:,2], notmask8)
+
 
             # draw the prediction contour
             ret,thresh = cv2.threshold(y_pred8,128,255,0)
             im2, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(img, contours, -1, (0,255,0), 6)
+            cv2.drawContours(img, contours, -1, (0,255,0), 8)
+
+            font_scale = 1.6
+            fname = os.path.basename(bg.images[index])
+            cv2.putText(img, fname, (20, 44), font, font_scale,
+                        (0, 0, 0), 10, cv2.LINE_AA)
+            cv2.putText(img, fname, (20, 40), font, font_scale, (255, 255, 255), 6,
+                        cv2.LINE_AA)
 
             if video_scale != 1:
                 img = cv2.resize(img, vid_scaled)
@@ -243,14 +256,20 @@ if __name__ == '__main__':
         '-w', '--weights',
         default=None,
         help='weights file')
+    parser.add_argument(
+        '-f', '--fraction_cracks',
+        default=None,
+        help='fraction of image labeled crack to be included in movie')
 
     args = parser.parse_args()
     if args.label_dir == 'None':
         args.label_dir = None
+    if args.fraction_cracks != None:
+        args.fraction_cracks = float(args.fraction_cracks)
     arguments = args.__dict__
 
 
     if args.command == 'train':
         train_model_batch_generator(**arguments)
     if args.command == 'train' or args.command == 'movie':
-        make_predition_movie(args.image_dir, args.label_dir, args.weights)
+        make_predition_movie(args.image_dir, args.label_dir, args.weights, args.fraction_cracks)

@@ -5,6 +5,52 @@ import random
 import imgaug as ia
 from imgaug import augmenters as iaa
 
+
+import numpy as np
+
+def hist_match(source, template):
+    """
+    Adjust the pixel values of a grayscale image such that its histogram
+    matches that of a target image
+
+    Arguments:
+    -----------
+        source: np.ndarray
+            Image to transform; the histogram is computed over the flattened
+            array
+        template: np.ndarray
+            Template image; can have different dimensions to source
+    Returns:
+    -----------
+        matched: np.ndarray
+            The transformed output image
+    """
+
+    oldshape = source.shape
+    source = source.ravel()
+    template = template.ravel()
+
+    # get the set of unique pixel values and their corresponding indices and
+    # counts
+    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
+                                            return_counts=True)
+    t_values, t_counts = np.unique(template, return_counts=True)
+
+    # take the cumsum of the counts and normalize by the number of pixels to
+    # get the empirical cumulative distribution functions for the source and
+    # template images (maps pixel value --> quantile)
+    s_quantiles = np.cumsum(s_counts).astype(np.float64)
+    s_quantiles /= s_quantiles[-1]
+    t_quantiles = np.cumsum(t_counts).astype(np.float64)
+    t_quantiles /= t_quantiles[-1]
+
+    # interpolate linearly to find the pixel values in the template image
+    # that correspond most closely to the quantiles in the source image
+    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+    return interp_t_values[bin_idx].reshape(oldshape)
+
+
 class batch_generator(object):
     ''' generator for images and masks '''
     def __init__(self,
@@ -82,20 +128,21 @@ class batch_generator(object):
         else:
             self.cropping = False
 
-        sometimes = lambda aug: iaa.Sometimes(0.5, aug) # 50% of the time
+        sometimes7 = lambda aug: iaa.Sometimes(0.75, aug) # % of the time
+        sometimes3 = lambda aug: iaa.Sometimes(0.33, aug) # % of the time
 
         self.seq = iaa.Sequential([
             #iaa.Crop(px=(0, 16)), # crop images from each side by 0 to 16px (randomly chosen)
             iaa.Fliplr(0.5), # horizontally flip 50% of the images
             iaa.Flipud(0.5),
-            sometimes(iaa.Affine(
-                 #scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
+            sometimes7(iaa.Affine(
+                 scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
                  translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
                  rotate=(-35, 35)
                  )),
             #iaa.GaussianBlur((0, 1.0))
             #iaa.AddToHueAndSaturation((-10, 10), name="AddToHueAndSaturation"),
-            iaa.Multiply((0.95, 1.05), name="Multiply")
+            sometimes3(iaa.Multiply((0.9, 1.1), name="Multiply"))
             # iaa.GaussianBlur(sigma=(0, 3.0)) # blur images with a sigma of 0 to 3.0
         ])
 
@@ -106,6 +153,8 @@ class batch_generator(object):
                 # default value for all other augmenters
                 return default
         self.hooks_activator_mask = ia.HooksImages(activator=activator_mask)
+        
+        self.template = cv2.imread(r"../data/crack_detect/original/crack_images/20170505160314874_295434_5LC_0064_01_001088_0_14_74.tif", cv2.IMREAD_GRAYSCALE)
 
     def get_image_and_mask(self, index, source='training', augment=False):
         ''' return the optionally scaled image and mask from one of the 3 sets'''
@@ -129,14 +178,17 @@ class batch_generator(object):
 
         if True:
             # make really, really, really dark images lighter
-            percentage = 97 # ignore (1-percentage) top bright values
-            percentage_target = 180 # target mean gray level
-            a = np.percentile(img, percentage)
-            if a < percentage_target:
-                img = cv2.multiply(img, percentage_target / a)
-                # print (a, np.percentile(img, percentage))
+            # percentage = 97 # ignore (1-percentage) top bright values
+            # percentage_target = 180 # target mean gray level
+            # a = np.percentile(img, percentage)
+            # if a < percentage_target:
+            #     img = cv2.multiply(img, percentage_target / a)
+            #     # print (a, np.percentile(img, percentage))
 
             img = cv2.equalizeHist(img)
+
+            #img = hist_match(img, self.template)
+
             pass
             
         if self.output_size:

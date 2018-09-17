@@ -5,17 +5,38 @@ from __future__ import division
 
 import os, sys
 
+import keras.backend as K
 from keras.layers import BatchNormalization, Conv2D, Conv2DTranspose, Cropping2D, Dropout, Softmax, UpSampling2D, ZeroPadding2D, concatenate, add
 from keras.layers import Convolution2D, MaxPooling2D, Conv2DTranspose
 from keras.layers import Activation, Dropout, Flatten, Dense, Input, Reshape
 from keras.models import Model, Sequential
 from keras.optimizers import Adadelta, SGD
+from keras.layers import LeakyReLU
 from keras.applications.vgg16 import VGG16
 from keras.applications.xception import Xception
 
 #Parameters
 INPUT_CHANNELS = 1
 NUMBER_OF_CLASSES = 1
+
+def jaccard_distance_loss(y_true, y_pred, smooth=100):
+    """
+    Jaccard = (|X & Y|)/ (|X|+ |Y| - |X & Y|)
+            = sum(|A*B|)/(sum(|A|)+sum(|B|)-sum(|A*B|))
+    
+    The jaccard distance loss is usefull for unbalanced datasets. This has been
+    shifted so it converges on 0 and is smoothed to avoid exploding or disapearing
+    gradient.
+    
+    Ref: https://en.wikipedia.org/wiki/Jaccard_index
+    
+    @url: https://gist.github.com/wassname/f1452b748efcbeb4cb9b1d059dce6f96
+    @author: wassname
+    """
+    intersection = K.sum(K.abs(y_true * y_pred), axis=-1)
+    sum_ = K.sum(K.abs(y_true) + K.abs(y_pred), axis=-1)
+    jac = (intersection + smooth) / (sum_ - intersection + smooth)
+    return (1 - jac) * smooth 
 
 
 def get_model(batch_size=8, width=None, height=None):
@@ -34,9 +55,9 @@ def get_model(batch_size=8, width=None, height=None):
     model = Model(inputs=inputs, outputs=act)
 
     optimizer = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    # optimizer = Adadelta()
+    #optimizer = Adadelta()
 
-    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=jaccard_distance_loss, metrics=['accuracy'])
 
     print(model.summary())
 
@@ -108,50 +129,66 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
 
     # ----------------------------------------------------------------------------------------------
 
+    leak = .001
+    dropout = 0.25
     x = BatchNormalization()(inputs)
 
     # Block 1
-    x = Conv2D(32, (3, 3), activation='relu', padding='same', name='block1_conv1')(x)
-    x = Conv2D(32, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
+    x = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(x)
+    x = LeakyReLU(alpha=leak)(x)
+    x = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(x)
+    x = LeakyReLU(alpha=leak)(x)
     x = BatchNormalization()(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
 
 
     # Block 2
-    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
+    x = Conv2D(64, (5, 5), padding='same', name='block2_conv1')(x)
+    x = LeakyReLU(alpha=leak)(x)
+    x = Conv2D(64, (5, 5), padding='same', name='block2_conv2')(x)
+    x = LeakyReLU(alpha=leak)(x)
     x = BatchNormalization()(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
 
     # Block 3
-    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
-    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
-    # x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
+    x = Conv2D(128, (9, 9), padding='same', name='block3_conv1')(x)
+    x = LeakyReLU(alpha=leak)(x)
+    x = Conv2D(128, (9, 9), padding='same', name='block3_conv2')(x)
+    # x = LeakyReLU(alpha=leak)(x)
+    # x = Conv2D(128, (3, 3), padding='same', name='block3_conv3')(x)
+    x = LeakyReLU(alpha=leak)(x)
     x = BatchNormalization()(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
 
-    # x = Dropout(0.35)(x)
+    # x = Dropout(dropout)(x)
 
-    # Block 4
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
-    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
-    x = BatchNormalization()(x)
-    # x = Dropout(0.35)(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
+    # # Block 4
+    # x = Conv2D(256, (3, 3), padding='same', name='block4_conv1')(x)
+    # x = LeakyReLU(alpha=leak)(x)
+    # x = Conv2D(256, (3, 3), padding='same', name='block4_conv2')(x)
+    # x = LeakyReLU(alpha=leak)(x)
+    # x = Conv2D(256, (3, 3), padding='same', name='block4_conv3')(x)
+    # x = LeakyReLU(alpha=leak)(x)
+    # x = BatchNormalization()(x)
+    # x = Dropout(dropout)(x)
+    # x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
 
-    # Block 5
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
-    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
-    x = BatchNormalization()(x)
-    # x = Dropout(0.35)(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
+    # # Block 5
+    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
+    # # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
+    # # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
+    # x = BatchNormalization()(x)
+    # # x = Dropout(dropout)(x)
+    # x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
 
 
-    x = Conv2D(n_classes, (3, 3), activation='relu', padding="same")(x)
-
-    x = Conv2DTranspose(n_classes, kernel_size=(64, 64), strides=(32, 32), activation='linear', padding='same')(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding="same")(x)
+     
+    # x = Conv2DTranspose(n_classes, kernel_size=(64, 64), strides=(32, 32), activation='linear', padding='same')(x)
+    x = Conv2DTranspose(n_classes, kernel_size=(16, 16), strides=(8, 8), activation='linear', padding='same')(x)
 
     return x
 
