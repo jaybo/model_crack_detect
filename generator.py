@@ -4,9 +4,12 @@ import cv2
 import random
 import imgaug as ia
 from imgaug import augmenters as iaa
-
-
 import numpy as np
+
+ia.seed(1)
+
+MEAN = 187.41119924316425 
+VARIANCE = 7.836514274501137
 
 def hist_match(source, template):
     """
@@ -50,6 +53,23 @@ def hist_match(source, template):
 
     return interp_t_values[bin_idx].reshape(oldshape)
 
+def contrast_local_normalization(img):
+
+    float_gray = img.astype(np.float32) / 255.0
+    blur = cv2.GaussianBlur(float_gray, (0, 0), sigmaX=2, sigmaY=2)
+    num = float_gray - blur
+
+    blur = cv2.GaussianBlur(num*num, (0, 0), sigmaX=20, sigmaY=20)
+    den = cv2.pow(blur, 0.5)
+
+    gray = num / den
+
+    cv2.normalize(gray, dst=gray, alpha=0.0, beta=1.0, norm_type=cv2.NORM_MINMAX)
+
+    gray = gray * 255
+    gray = gray.astype(np.uint8)
+    return gray
+
 
 class batch_generator(object):
     ''' generator for images and masks '''
@@ -91,12 +111,7 @@ class batch_generator(object):
             assert (self.image_count == self.mask_count)
 
         # shuffle
-        if self.label_dir:
-            c = list(zip(self.images, self.masks))
-            random.shuffle(c)
-            self.images, self.masks = zip(*c)
-        else:
-            random.shuffle(self.images)
+        self.shuffle()
 
         # make training and validation sets
         training_set = np.random.choice([True, False], self.image_count, p=[self.training_split, 1.0-self.training_split])
@@ -107,6 +122,8 @@ class batch_generator(object):
             self.training_masks = [x for x,y in zip(self.masks, training_set) if y]
             self.validation_masks = [x for x,y in zip(self.masks, not_training_set) if y]
         self.batch_size = batch_size
+        if validation_batch_size is None:
+            validation_batch_size = len(self.validation_images)
         self.validation_batch_size = validation_batch_size
         self.steps_per_epoch = int(len(self.training_images) / batch_size)
         self.validation_steps = int(len(self.validation_images) / validation_batch_size)
@@ -136,13 +153,15 @@ class batch_generator(object):
             iaa.Fliplr(0.5), # horizontally flip 50% of the images
             iaa.Flipud(0.5),
             sometimes7(iaa.Affine(
-                 scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
+                 #scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
                  translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                 rotate=(-35, 35)
+                 rotate=(-45, 45),
+                 mode='constant',
+                 cval= MEAN
                  )),
             #iaa.GaussianBlur((0, 1.0))
             #iaa.AddToHueAndSaturation((-10, 10), name="AddToHueAndSaturation"),
-            sometimes3(iaa.Multiply((0.9, 1.1), name="Multiply"))
+            sometimes3(iaa.Multiply((0.95, 1.05), name="Multiply"))
             # iaa.GaussianBlur(sigma=(0, 3.0)) # blur images with a sigma of 0 to 3.0
         ])
 
@@ -155,6 +174,17 @@ class batch_generator(object):
         self.hooks_activator_mask = ia.HooksImages(activator=activator_mask)
         
         self.template = cv2.imread(r"../data/crack_detect/original/crack_images/20170505160314874_295434_5LC_0064_01_001088_0_14_74.tif", cv2.IMREAD_GRAYSCALE)
+
+
+    def shuffle (self):
+        ''' randomize the images and masks (if available) '''
+        if self.label_dir:
+            c = list(zip(self.images, self.masks))
+            random.shuffle(c)
+            self.images, self.masks = zip(*c)
+        else:
+            random.shuffle(self.images)
+
 
     def get_image_and_mask(self, index, source='training', augment=False):
         ''' return the optionally scaled image and mask from one of the 3 sets'''
@@ -185,9 +215,20 @@ class batch_generator(object):
             #     img = cv2.multiply(img, percentage_target / a)
             #     # print (a, np.percentile(img, percentage))
 
-            img = cv2.equalizeHist(img)
+            # img = contrast_local_normalization(img)
+            
+            #img -= 187 # 187.4111992431641
+            # img /= 7.840043441207606
+
+            #img = cv2.equalizeHist(img)
+            
+            #img = img / 255.0
 
             #img = hist_match(img, self.template)
+
+            # just subtract the mean
+            # mean = np.mean(img)
+            # img -= np.uint8(mean)
 
             pass
             
@@ -208,7 +249,7 @@ class batch_generator(object):
                     if mask is not None:
                         tmsk = mask[y:y+self.output_size[0], x:x+self.output_size[1]]
                         if self.include_only_crops_with_mask:
-                            if tmsk.any() > 0:
+                            if np.count_nonzero(tmsk) > 5000:
                                 break
                 if timg is not None:
                     img = timg.copy()
@@ -229,6 +270,15 @@ class batch_generator(object):
             img = seq_det.augment_image(img)
             if self.label_dir:
                 mask = seq_det.augment_image(mask, hooks=self.hooks_activator_mask)
+                mask[mask == int(MEAN)] = 0
+
+        # mean and stddev correction
+        # mean = 187.4111992431641 
+        # stddev = 7.840043441207606 
+        # cv2.subtract(img, mean, img, mask=None, dtype='uint8')
+        # cv2.divide(img, stddev, img, mask=None, dtype='uint8')
+        # img -=187
+        #img = img / 8
 
         return img, mask
 
@@ -239,11 +289,12 @@ class batch_generator(object):
             mask_list = []
 
             for i in range(self.batch_size):
-                img, mask = self.get_image_and_mask(self.epoch_index, source='training', augment=False)
+                img, mask = self.get_image_and_mask(self.epoch_index, source='training', augment=True)
 
                 self.epoch_index += 1
                 if self.epoch_index >= self.steps_per_epoch:
                     self.epoch_index = 0
+                    self.shuffle()
                 image_list.append(img)
                 mask_list.append(mask)
 
@@ -266,35 +317,35 @@ class batch_generator(object):
 
     def validation_batch(self):
         ''' if batch_size == None, then batch_size == epoch '''
-        while True:
-            image_list = []
-            mask_list = []
+        
+        image_list = []
+        mask_list = []
 
-            for i in range(self.validation_batch_size):
-                img, mask = self.get_image_and_mask(self.validation_index, source='validation', augment=False)
+        for i in range(self.validation_batch_size):
+            img, mask = self.get_image_and_mask(self.validation_index, source='validation', augment=False)
 
-                self.validation_index += 1
-                if self.validation_index >= self.validation_steps:
-                    self.validation_index = 0
-                image_list.append(img)
-                mask_list.append(mask)
+            self.validation_index += 1
+            if self.validation_index >= self.validation_steps:
+                self.validation_index = 0
+            image_list.append(img)
+            mask_list.append(mask)
 
-            # don't augment the validation batch
-            seq_det = self.seq.to_deterministic()
-            image_list = seq_det.augment_images(image_list)
-            mask_list = seq_det.augment_images(mask_list, hooks=self.hooks_activator_mask)
+        # don't augment the validation batch
+        # seq_det = self.seq.to_deterministic()
+        # image_list = seq_det.augment_images(image_list)
+        # mask_list = seq_det.augment_images(mask_list, hooks=self.hooks_activator_mask)
 
-            image_list = np.array(image_list, dtype=np.float32) #Note: don't scale input, because use batchnorm after input
+        image_list = np.array(image_list, dtype=np.float32) #Note: don't scale input, because use batchnorm after input
 
-            # image_list /= 255.
+        # image_list /= 255.
 
-            image_list = image_list.reshape(self.validation_batch_size, self.height, self.width, 1)
-            mask_list = np.array(mask_list, dtype=np.float32)
-            mask_list /= 255.0 # [0,1]
+        image_list = image_list.reshape(self.validation_batch_size, self.height, self.width, 1)
+        mask_list = np.array(mask_list, dtype=np.float32)
+        mask_list /= 255.0 # [0,1]
 
-            mask_list= mask_list.reshape(self.validation_batch_size,self.height*self.width, 1) #NUMBER_OF_CLASSES
+        mask_list= mask_list.reshape(self.validation_batch_size,self.height*self.width, 1) #NUMBER_OF_CLASSES
 
-            yield image_list, mask_list
+        return image_list, mask_list
 
     def get_random_validation(self):
         index = randint(0, self.validation_steps)
@@ -312,7 +363,7 @@ class batch_generator(object):
                 alpha = 0.25
                 cv2.addWeighted(mask, alpha, img, 1 - alpha, 0, img)
                 # outline contour
-                ret,thresh = cv2.threshold(mask8,127,255,0)
+                ret,thresh = cv2.threshold(mask8,254,255,0)
                 im2, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(img, contours, -1, (0,255,0), 3)
 

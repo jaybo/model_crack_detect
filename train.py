@@ -1,5 +1,7 @@
 """ Jay Borseth
     2018.07.25
+
+    tensorboard --logdir=logs
 """
 
 from __future__ import print_function
@@ -9,21 +11,38 @@ import io
 import os
 import sys
 from datetime import datetime  # for filename conventions
-from time import time
+from time import time   
 
 # force to run on CPU
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1' 
 
 import cv2
 import h5py
+import tensorflow as tf
 import keras
 import keras.backend as K
+from keras.optimizers import Adadelta, SGD, Adam
 import numpy as np
-from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
+import random as rn
+
+# repeatable
+np.random.seed(42)
+rn.seed(12345)
+tf.set_random_seed(1234)
 
 import models
 from generator import batch_generator
 
+print(tf.VERSION)
+print(tf.keras.__version__)
+print(keras.__version__)
+
+
+
+
+
+# 2018.12.30 added three all white image to data ..._0_21_106.tif
 
 #Parameters
 INPUT_CHANNELS = 1
@@ -32,12 +51,12 @@ NAME = "CrackDetect_{}".format(datetime.now().isoformat(timespec='seconds')).rep
 
 #HyperParameters
 BATCH_SIZE = 1
-VALIDATION_BATCH_SIZE = 1
+VALIDATION_BATCH_SIZE = 8 # use all validation images if None
 OUTPUT_SIZE = (256, 256)  # (H, W)
 SCALE_SIZE = (1920, 1920) # (H, W)
 EPOCHS = 500
-PATIENCE = 15
-
+PATIENCE = 160
+CLASS_WEIGHT = {0: 95.0, 1: 5.0}
 
 # Create a function to allow for different training data and other options
 def train_model_batch_generator(image_dir=None,
@@ -58,6 +77,8 @@ def train_model_batch_generator(image_dir=None,
 
     model = models.get_model(BATCH_SIZE, width=OUTPUT_SIZE[1], height=OUTPUT_SIZE[0])
 
+    # frozen_layer = model.get_layer('block1_conv0')
+
     checkpoint_name = NAME + '.h5'
 
     # class LearningRateTracker(keras.callbacks.Callback):
@@ -66,16 +87,39 @@ def train_model_batch_generator(image_dir=None,
     #         lr = K.eval(optimizer.lr * (1. / (1. + optimizer.decay * optimizer.iterations)))
     #         print('\nLR: {:.6f}\n'.format(lr))
 
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.6, patience=5, min_lr=0.001)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=20, min_lr=0.0001)
 
-    tensorboard = keras.callbacks.TensorBoard(
+    def unfreeze(model, epoch):
+        if epoch == 20:
+            model.layers[2].trainable = True
+            optimizer = Adam(lr = 1e-4)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+    unfreeze_layers = keras.callbacks.LambdaCallback(
+        on_epoch_end = lambda epoch, logs: unfreeze(model, epoch)
+          
+    )
+
+    class LRTensorBoard(TensorBoard):
+        ''' add the learning rate to tensorboard '''
+        def __init__(self, log_dir, histogram_freq=1, write_grads=True, write_images=True):  # add other arguments to __init__ if you need
+            super().__init__(log_dir=log_dir, histogram_freq=1, write_grads=True, write_images=True)
+
+        def on_epoch_end(self, epoch, logs=None):
+            logs.update({'lr': K.eval(self.model.optimizer.lr)})
+            super().on_epoch_end(epoch, logs)
+            
+    tensorboard = TensorBoard(
         log_dir="logs/{}".format(NAME),
-        #histogram_freq=1,
-        write_images=True)
+        histogram_freq=1,
+        write_grads=True,
+        write_images=True
+        )
 
     callbacks = [
         tensorboard,
         reduce_lr,
+        #unfreeze_layers,
         # LearningRateTracker(),
         EarlyStopping(monitor='val_loss', patience=PATIENCE, verbose=0),
         ModelCheckpoint(
@@ -85,14 +129,17 @@ def train_model_batch_generator(image_dir=None,
             verbose=0),
     ]
 
+    X_test, Y_test = bg.validation_batch()
+
     history = model.fit_generator(
         bg.training_batch(),
-        validation_data=bg.validation_batch(),
+        validation_data=(X_test, Y_test),
         epochs=EPOCHS,
         steps_per_epoch=bg.steps_per_epoch,
         validation_steps=bg.validation_steps,
         verbose=1,
         shuffle=False,
+        # class_weight=CLASS_WEIGHT,
         callbacks=callbacks)
 
     # Save the model locally
@@ -187,9 +234,9 @@ def make_predition_movie(image_dir, label_dir, weights=None, fraction_cracks=Non
 
 
 
-            y_pred8 = y_pred * 255
+            y_pred8 = y_pred * 255 
             y_pred8 = y_pred8.astype(np.uint8)
-            # print (y_pred8.min(), y_pred8.max(), y_pred8.sum(), y_pred8.shape)
+            #print (y_pred8.min(), y_pred8.max(), y_pred8.sum(), y_pred8.shape)
 
             img = img[:,:,0].astype(np.uint8)
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -208,7 +255,7 @@ def make_predition_movie(image_dir, label_dir, weights=None, fraction_cracks=Non
 
 
             # draw the prediction contour
-            ret,thresh = cv2.threshold(y_pred8,128,255,0)
+            ret,thresh = cv2.threshold(y_pred8,127,255,0)
             im2, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(img, contours, -1, (0,255,0), 8)
 
@@ -234,9 +281,67 @@ def make_predition_movie(image_dir, label_dir, weights=None, fraction_cracks=Non
     #cv2.destroyAllWindows()
     vid_out.release()
 
+class RunningStats:
+
+    # https://stackoverflow.com/questions/1174984/how-to-efficiently-calculate-a-running-standard-deviation
+    def __init__(self):
+        self.n = 0
+        self.old_m = 0
+        self.new_m = 0
+        self.old_s = 0
+        self.new_s = 0
+
+    def clear(self):
+        self.n = 0
+
+    def push(self, x):
+        self.n += 1
+
+        if self.n == 1:
+            self.old_m = self.new_m = x
+            self.old_s = 0
+        else:
+            self.new_m = self.old_m + (x - self.old_m) / self.n
+            self.new_s = self.old_s + (x - self.old_m) * (x - self.new_m)
+
+            self.old_m = self.new_m
+            self.old_s = self.new_s
+
+    def mean(self):
+        return self.new_m if self.n else 0.0
+
+    def variance(self):
+        return self.new_s / (self.n - 1) if self.n > 1 else 0.0
+
+    def standard_deviation(self):
+        return np.sqrt(self.variance())
 
 
+def calc_mean(image_dir, label_dir, weights=None, fraction_cracks=None, loops = 100):
+    ''' calc mean and stddev for the dataset.'''
 
+    bg = batch_generator(
+        image_dir,
+        label_dir,
+        batch_size=1,
+        validation_batch_size=1,
+        output_size=(1920, 1920), # (H, W)
+        scale_size=None, # (H, W)
+        include_only_crops_with_mask = False,
+        augment=True)
+
+    stats = RunningStats()
+
+    for loop in range(loops):
+        for index in range(bg.image_count):
+            img, mask8 = bg.get_image_and_mask(index, source='all', augment=False)
+            mean = np.mean(img)
+            stats.push(mean)
+
+    print (stats.mean(), stats.standard_deviation())
+
+    # 187.4111992431641 7.840043441207606 (10, augment)
+    # 187.41119924316425 7.836514274501137 (100, augment)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -273,3 +378,5 @@ if __name__ == '__main__':
         train_model_batch_generator(**arguments)
     if args.command == 'train' or args.command == 'movie':
         make_predition_movie(args.image_dir, args.label_dir, args.weights, args.fraction_cracks)
+    if args.command == 'calc_mean':
+        calc_mean(args.image_dir, args.label_dir, args.weights, args.fraction_cracks)
