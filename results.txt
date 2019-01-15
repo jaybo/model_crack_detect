@@ -1,0 +1,2 @@
+'CrackDetect_2019-01-14T22-33-17.h5', batch=1, patience=160, unet, optimizer = Adam(lr = 1e-2), model.compile(optimizer=optimizer, loss=[focal_loss(alpha=.25, gamma=2)], metrics=['accuracy']), no convergence
+above with custom_gabor, no convergence
