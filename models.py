@@ -234,23 +234,48 @@ def get_fcn_vgg16_32s_modified(inputs, n_classes):
 
 
 
+# def custom_gabor(shape, dtype=None):
+#     total_ker = np.zeros(shape, dtype=dtype)
+#     for i in range(shape[2]): # channels
+#         n_kernels = shape[3]
+#         for j in range(n_kernels): # kernels
+#             # gk = gabor_kernel(frequency=0.2, bandwidth=0.1)
+#             tmp_filter = cv2.getGaborKernel(ksize=(shape[0], shape[1]), sigma=1, theta=6.28 * j / n_kernels, lambd=0.5, gamma=0.3, psi=(3.14) * 0.5,
+#                            ktype=cv2.CV_64F)
+#             total_ker[:, :, i, j] = tmp_filter
+#     #         filter = []
+#     #         for row in tmp_filter:
+#     #             filter.append(np.delete(row, -1))
+#     #         kernels.append(filter)
+#     #             # gk.real
+#     #     total_ker.append(kernels)
+#     # np_tot = np.array(total_ker)
+#     return total_ker # np_tot
+
+
 def custom_gabor(shape, dtype=None):
-    total_ker = np.zeros(shape, dtype=dtype)
-    for i in range(shape[2]): # channels
-        n_kernels = shape[3]
-        for j in range(n_kernels): # kernels
-            # gk = gabor_kernel(frequency=0.2, bandwidth=0.1)
-            tmp_filter = cv2.getGaborKernel(ksize=(shape[0], shape[1]), sigma=1, theta=6.28 * j / n_kernels, lambd=0.5, gamma=0.3, psi=(3.14) * 0.5,
-                           ktype=cv2.CV_64F)
-            total_ker[:, :, i, j] = tmp_filter
-    #         filter = []
-    #         for row in tmp_filter:
-    #             filter.append(np.delete(row, -1))
-    #         kernels.append(filter)
-    #             # gk.real
-    #     total_ker.append(kernels)
-    # np_tot = np.array(total_ker)
-    return total_ker # np_tot
+    ''' initializes a layer to gabor kernels, 
+    where each kernel has a different rotation angle but all kernels are the same size.
+    shape[0] is height of a kernel, shape[1] is width of a kernel, 
+    shape[2] is the number of channels, shape[3] is number of kernels '''
+    kernels = np.zeros(shape, dtype=dtype)
+    channels = shape[2]
+    n_kernels = shape[3]
+    for i in range(channels): 
+        for j in range(n_kernels):  
+            a_filter = cv2.getGaborKernel(
+                ksize=(shape[0], shape[1]),
+                sigma=1,
+                theta=6.28 * j / n_kernels,
+                lambd=0.5,
+                gamma=0.3,
+                psi=3.14 * 0.5,
+                ktype=cv2.CV_64F)
+            kernels[:, :, i, j] = a_filter
+    #kernels -= 0.5
+    return kernels
+
+
 
 def get_fcn_vgg16_32s_jayb(inputs, n_classes):
 
@@ -260,7 +285,7 @@ def get_fcn_vgg16_32s_jayb(inputs, n_classes):
     reg = 0.01
 
     # Block 1
-    x = Conv2D(32, (3, 3), activation='relu', padding='same', trainable=True, kernel_initializer=custom_gabor, use_bias=True, kernel_regularizer=l2(reg), name='block1_conv1')(x)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same', trainable=True, kernel_initializer='he_normal', use_bias=True, kernel_regularizer=l2(reg), name='block1_conv1')(x)
     x = Conv2D(32, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', use_bias=True, kernel_regularizer=l2(reg), name='block1_conv2')(x)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
@@ -372,12 +397,12 @@ def get_unet(inputs, n_classes):
 
     x = BatchNormalization()(inputs)
 
-    conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = custom_gabor)(x)
-    conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv1)
+    conv1 = Conv2D(64, 9, activation = 'relu', trainable=False,  padding = 'same', kernel_initializer = custom_gabor)(x)
+    conv1 = Conv2D(64, 9, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
 
-    conv2 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(pool1)
-    conv2 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv2)
+    conv2 = Conv2D(128, 5, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(pool1)
+    conv2 = Conv2D(128, 5, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv2)
     pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
 
     conv3 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(pool2)

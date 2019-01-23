@@ -161,7 +161,7 @@ class batch_generator(object):
                  )),
             #iaa.GaussianBlur((0, 1.0))
             #iaa.AddToHueAndSaturation((-10, 10), name="AddToHueAndSaturation"),
-            sometimes3(iaa.Multiply((0.95, 1.05), name="Multiply"))
+            sometimes7(iaa.Multiply((0.80, 1.2), name="Multiply"))
             # iaa.GaussianBlur(sigma=(0, 3.0)) # blur images with a sigma of 0 to 3.0
         ])
 
@@ -322,7 +322,7 @@ class batch_generator(object):
         mask_list = []
 
         for i in range(self.validation_batch_size):
-            img, mask = self.get_image_and_mask(self.validation_index, source='validation', augment=False)
+            img, mask = self.get_image_and_mask(self.validation_index, source='validation', augment=True)
 
             self.validation_index += 1
             if self.validation_index >= self.validation_steps:

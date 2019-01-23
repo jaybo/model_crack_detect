@@ -17,8 +17,8 @@ import models
 img_width = 128
 img_height = 128
 
-model_name = 'CrackDetect_2019-01-14T22-33-17.h5'
-#model_name = 'model.h5'
+model_name = 'CrackDetect_2019-01-21T05-53-51.h5'
+# model_name = 'model.h5'
 
 def deprocess_image(x):
     # normalize tensor: center on 0., ensure std is 0.1
@@ -118,7 +118,7 @@ for layer_name in layer_dict.keys():
 
     # the filters that have the highest loss are assumed to be better-looking.
     # we will only keep the top 64 filters.
-    kept_filters.sort(key=lambda x: x[1], reverse=True)
+    # kept_filters.sort(key=lambda x: x[1], reverse=True)
     kept_filters = kept_filters[:n * n]
 
     # build a black picture with enough space for

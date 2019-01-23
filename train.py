@@ -55,7 +55,7 @@ VALIDATION_BATCH_SIZE = 8 # use all validation images if None
 OUTPUT_SIZE = (256, 256)  # (H, W)
 SCALE_SIZE = (1920, 1920) # (H, W)
 EPOCHS = 500
-PATIENCE = 160
+PATIENCE = 100
 CLASS_WEIGHT = {0: 95.0, 1: 5.0}
 
 # Create a function to allow for different training data and other options
@@ -113,7 +113,7 @@ def train_model_batch_generator(image_dir=None,
         log_dir="logs/{}".format(NAME),
         histogram_freq=1,
         write_grads=True,
-        write_images=True
+        write_images=False
         )
 
     callbacks = [
@@ -248,10 +248,15 @@ def make_predition_movie(image_dir, label_dir, weights=None, fraction_cracks=Non
 
             # fill with the ground truth
             if mask8 is not None:
-                notmask8 = cv2.bitwise_not(mask8)
-                img[:,:,0] = cv2.bitwise_or(img[:,:,0], mask8)
-                img[:,:,1] = cv2.bitwise_and(img[:,:,1], notmask8)
-                img[:,:,2] = cv2.bitwise_and(img[:,:,2], notmask8)
+                mask = np.zeros_like(img)
+                mask[:,:,2] = mask8
+                alpha = 0.25
+                cv2.addWeighted(mask, alpha, img, 1 - alpha, 0, img)
+
+                # notmask8 = cv2.bitwise_not(mask8)
+                # img[:,:,0] = cv2.bitwise_or(img[:,:,0], mask8)
+                # img[:,:,1] = cv2.bitwise_and(img[:,:,1], notmask8)
+                # img[:,:,2] = cv2.bitwise_and(img[:,:,2], notmask8)
 
 
             # draw the prediction contour
