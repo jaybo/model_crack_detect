@@ -18,27 +18,28 @@ from time import time
 
 import cv2
 import h5py
+#import tensorflow as tf
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
+
 import tensorflow as tf
-import keras
-import keras.backend as K
-from keras.optimizers import Adadelta, SGD, Adam
+from tensorflow import keras
+import tensorflow_core.python.keras.backend as K
+from tensorflow_core.python.keras.optimizers import Adadelta, SGD, Adam
+from tensorflow_core.python.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 import numpy as np
-from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
 import random as rn
 
 # repeatable
 np.random.seed(42)
 rn.seed(12345)
-tf.set_random_seed(1234)
+#tf.set_random_seed(1234)
 
 import models
 from generator import batch_generator
 
-print(tf.VERSION)
+#print(tf.VERSION)
 print(tf.keras.__version__)
-print(keras.__version__)
-
-
 
 
 
@@ -110,7 +111,7 @@ def train_model_batch_generator(image_dir=None,
             super().on_epoch_end(epoch, logs)
             
     tensorboard = TensorBoard(
-        log_dir="logs/{}".format(NAME),
+        log_dir="logs\\{}".format(NAME),
         histogram_freq=1,
         write_grads=True,
         write_images=False

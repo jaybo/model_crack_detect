@@ -6,18 +6,21 @@ import os, sys
 import numpy as np
 
 import tensorflow as tf
-import keras
-import keras.backend as K
-from keras.layers import BatchNormalization, Conv2D, Conv2DTranspose, Cropping2D, Dropout, Softmax, UpSampling2D, ZeroPadding2D, concatenate, add
-from keras.layers import Convolution2D, MaxPooling2D, AveragePooling2D, Conv2DTranspose
-from keras.layers import Activation, Dropout, Flatten, Dense, Input, Reshape, LeakyReLU
-from keras.models import Model, Sequential
-from keras.optimizers import Adadelta, SGD, Adam
-from keras.initializers import glorot_normal, RandomNormal, Zeros, Constant
-from keras.applications.vgg16 import VGG16
-from keras.applications.xception import Xception
-from keras.regularizers import l2
-from keras import losses
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
+
+from tensorflow import keras
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import BatchNormalization, Conv2D, Conv2DTranspose, Cropping2D, Dropout, Softmax, UpSampling2D, ZeroPadding2D, concatenate, add
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, AveragePooling2D, Conv2DTranspose
+from tensorflow.keras.layers import Activation, Dropout, Flatten, Dense, Input, Reshape, LeakyReLU
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.optimizers import Adadelta, SGD, Adam
+from tensorflow.keras.initializers import glorot_normal, RandomNormal, Zeros, Constant
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.applications.xception import Xception
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras import losses
 
 import cv2
 
@@ -99,10 +102,10 @@ def get_model(batch_size=8, width=None, height=None):
     optimizer = Adam(lr = 1e-5)
 
     # model.compile(optimizer=optimizer, loss=jaccard_distance_loss, metrics=['accuracy'])
-    #model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
     #model.compile(optimizer=optimizer, loss=dice_coef, metrics=['accuracy'])    
     #model.compile(optimizer=optimizer, loss=create_weighted_binary_crossentropy(), metrics=['accuracy'])
-    model.compile(optimizer=optimizer, loss=[focal_loss(alpha=.25, gamma=2)], metrics=['accuracy'])
+    #model.compile(optimizer=optimizer, loss=[focal_loss(alpha=.25, gamma=2)], metrics=['accuracy'])
 
 
     print(model.summary())
@@ -258,7 +261,7 @@ def custom_gabor(shape, dtype=None):
     where each kernel has a different rotation angle but all kernels are the same size.
     shape[0] is height of a kernel, shape[1] is width of a kernel, 
     shape[2] is the number of channels, shape[3] is number of kernels '''
-    kernels = np.zeros(shape, dtype=dtype)
+    kernels = np.zeros(shape, dtype=np.float)
     channels = shape[2]
     n_kernels = shape[3]
     for i in range(channels): 

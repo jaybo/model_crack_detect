@@ -1,2 +1,50 @@
 'CrackDetect_2019-01-14T22-33-17.h5', batch=1, patience=160, unet, optimizer = Adam(lr = 1e-2), model.compile(optimizer=optimizer, loss=[focal_loss(alpha=.25, gamma=2)], metrics=['accuracy']), no convergence
 above with custom_gabor, no convergence
+no hist equal
+reduce lr to 1e-5 WORKS!
+'CrackDetect_2019-01-15T04-12-57.h5' GOOD VERSION! with custom_gabor
+
+
+CrackDetect_2019-01-20T23-44-37
+Epoch 275/500
+87/87 [==============================] - 8s 94ms/step - loss: 128.5896 - acc: 0.8711 - val_loss: 30.0047 - val_acc: 0.9908
+locked first layer, gabor, gabor not zero centered!!!
+9/5/3
+sometimes7(iaa.Multiply((0.90, 1.1), name="Multiply"))
+
+CrackDetect_2019-01-21T05-53-51
+Epoch 318/500
+87/87 [==============================] - 8s 94ms/step - loss: 213.5709 - acc: 0.8626 - val_loss: 59.8983 - val_acc: 0.9908
+locked first layer, gabor, gabor not zero centered!!!
+9/5/3
+sometimes7(iaa.Multiply((0.80, 1.2), name="Multiply"))
+The best yet?
+
+locked gabor as above:
+3/3/3 works way worse
+9/7/5/3 worse
+
+Epoch 474/500
+87/87 [==============================] - 7s 82ms/step - loss: 198.5212 - acc: 0.8612 - val_loss: 83.1723 - val_acc: 0.9908
+locked gabor
+7/3/3
+false positives along edges of rotated square
+
+CrackDetect_2019-01-22T04-54-55
+Epoch 474/500
+87/87 [==============================] - 8s 94ms/step - loss: 170.6833 - acc: 0.8621 - val_loss: 69.7601 - val_acc: 0.9907
+9/5/3
+gabor positive, trainable=False
+some false positives along rotated square
+Q4
+
+CrackDetect_2019-01-22T09-59-28
+Epoch 420/500
+87/87 [==============================] - 8s 94ms/step - loss: 99.2232 - acc: 0.8636 - val_loss: 58.1280 - val_acc: 0.9909
+9/5/3
+gabor positive, trainable=False
+Q5
+
+
+
+
